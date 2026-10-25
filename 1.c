@@ -1,75 +1,146 @@
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
 
-int main() {
-    int tests[10][2] = {
-        {4, 10}, {5, 15}, {6, 12}, {5, 8}, {7, 20},
-        {4, 6}, {5, 25}, {6, 18}, {8, 30}, {10, 50}
-    };
+#define MAX_LINE 256
 
-    int weights[10][10] = {
-        {5, 3, 4, 2},
-        {2, 3, 4, 5, 9},
-        {1, 2, 3, 8, 4, 5},
-        {3, 4, 2, 1, 5},
-        {2, 3, 4, 5, 9, 7, 6},
-        {1, 2, 3, 4},
-        {12, 7, 11, 8, 9},
-        {3, 5, 6, 2, 4, 7},
-        {4, 8, 5, 3, 6, 2, 9, 7},
-        {5, 10, 15, 22, 25, 30, 35, 40, 45, 50}
-    };
+int max(int a, int b) {
+    return (a > b) ? a : b;
+}
 
-    int values[10][10] = {
-        {60, 50, 70, 30},
-        {10, 20, 30, 40, 50},
-        {10, 15, 40, 90, 50, 60},
-        {30, 50, 20, 10, 60},
-        {12, 18, 25, 35, 50, 40, 30},
-        {20, 30, 40, 50},
-        {24, 13, 23, 15, 16},
-        {10, 20, 30, 15, 25, 35},
-        {10, 40, 30, 50, 70, 20, 60, 80},
-        {10, 20, 30, 40, 50, 60, 70, 80, 90, 100}
-    };
+void displayTable(int **dp, int rows, int W) {
+    printf("\033[H\033[J");
 
-    FILE *file = fopen("result.txt", "w");
-    if (file == NULL) {
-        printf("Error creating result.txt\n");
-        return 1;
+    printf("0/1 KNAPSACK DP TABLE\n\n");
+
+    printf("Item\\Cap |");
+    for (int w = 0; w <= W; w++)
+        printf("%4d", w);
+    printf("\n");
+
+    for (int i = 0; i <= rows; i++) {
+        printf("%8d |", i);
+
+        for (int w = 0; w <= W; w++)
+            printf("%4d", dp[i][w]);
+
+        printf("\n");
     }
 
-    for (int t = 0; t < 10; t++) {
-        int n = tests[t][0];
-        int W = tests[t][1];
-        int dp[11][51] = {0};
+    fflush(stdout);
+    usleep(200000); 
+}
 
-        printf("\n#Test %d\n", t + 1);
+int knapsack(int n, int W, int wt[], int val[],
+             int visualize) {
 
-        for (int i = 1; i <= n; i++) {
-            for (int w = 0; w <= W; w++) {
+    int **dp = malloc((n + 1) * sizeof(int *));
+
+    for (int i = 0; i <= n; i++)
+        dp[i] = calloc(W + 1, sizeof(int));
+
+    for (int i = 1; i <= n; i++) {
+        for (int w = 0; w <= W; w++) {
+
+            if (wt[i - 1] <= w) {
+                dp[i][w] = max(
+                    dp[i - 1][w],
+                    val[i - 1] + dp[i - 1][w - wt[i - 1]]
+                );
+            } else {
                 dp[i][w] = dp[i - 1][w];
-
-                if (weights[t][i - 1] <= w) {
-                    int take = values[t][i - 1] +
-                               dp[i - 1][w - weights[t][i - 1]];
-
-                    if (take > dp[i][w])
-                        dp[i][w] = take;
-                }
-            }
-
-            printf("After item %d:\n", i);
-            for (int r = 0; r <= i; r++) {
-                for (int c = 0; c <= W; c++)
-                    printf("%4d", dp[r][c]);
-                printf("\n");
             }
         }
 
-        printf("Maximum value: %d\n", dp[n][W]);
-        fprintf(file, "#Test %d %d %d\n", n, W, dp[n][W]);
+        if (visualize)
+            displayTable(dp, i, W);
     }
 
-    fclose(file);
+    int result = dp[n][W];
+
+    for (int i = 0; i <= n; i++)
+        free(dp[i]);
+
+    free(dp);
+    return result;
+}
+
+int main() {
+    FILE *input = fopen("knapsack_data.txt", "r");
+    FILE *output = fopen("result.txt", "w");
+
+    if (input == NULL || output == NULL) {
+        printf("Error opening files.\n");
+        if (input) fclose(input);
+        if (output) fclose(output);
+        return 1;
+    }
+
+    char line[MAX_LINE];
+    int test = 0;
+
+    while (fgets(line, sizeof(line), input)) {
+
+        if (strncmp(line, "#Test", 5) == 0) {
+            int n, W;
+
+            if (!fgets(line, sizeof(line), input))
+                break;
+
+            if (sscanf(line, "%d %d", &n, &W) != 2 ||
+                n <= 0 || W < 0) {
+                printf("Invalid test case header.\n");
+                break;
+            }
+
+            int *wt = malloc(n * sizeof(int));
+            int *val = malloc(n * sizeof(int));
+
+            if (!wt || !val) {
+                printf("Memory allocation failed.\n");
+                free(wt);
+                free(val);
+                break;
+            }
+
+            int valid = 1;
+
+            for (int i = 0; i < n; i++) {
+                if (!fgets(line, sizeof(line), input) ||
+                    sscanf(line, "%d %d", &wt[i], &val[i]) != 2 ||
+                    wt[i] < 0) {
+                    valid = 0;
+                    break;
+                }
+            }
+
+            if (!valid) {
+                printf("Invalid item data.\n");
+                free(wt);
+                free(val);
+                break;
+            }
+
+            test++;
+
+            int result = knapsack(n, W, wt, val, 1);
+
+            fprintf(output, "#Test %d (%d %d) %d\n",
+                    test, n, W, result);
+
+            printf("\nTest %d: Maximum Value = %d\n",
+                   test, result);
+
+            free(wt);
+            free(val);
+        }
+    }
+
+    fclose(input);
+    fclose(output);
+
+    printf("\nResults saved in result.txt\n");
+
     return 0;
 }
